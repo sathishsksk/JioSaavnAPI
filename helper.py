@@ -59,10 +59,11 @@ key = '38346591'
 iv = '00000000'
 
 def decrypt_url(url):
-    encrypted = util.decode64(encryptedMediaUrl)
-    decipher = cipher.create_decipher('DES-ECB', util.create_buffer(key, 'utf8'))
-    decipher.start({ iv: util.create_buffer(iv, 'utf8') })
-    decipher.update(util.create_buffer(encrypted))
-    decipher.finish()
-    decryptedLink = decipher.output.get_bytes()
+    enc_url = util.decode64(url)
+    dec_url = cipher.create_dec_url('DES-ECB', util.create_buffer(key, 'utf8'))
+    dec_url.start({ iv: util.create_buffer(iv, 'utf8') })
+    dec_url.update(util.create_buffer(encrypted))
+    dec_url.finish()
+    dec_url = dec_url.replace("_96.mp4", "_320.mp4")
+    return dec_url
     
