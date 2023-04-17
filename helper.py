@@ -58,6 +58,6 @@ def format(string):
 def decrypt_url(url):
     des_cipher = des(b"38346591", DES-ECB, b"\0\0\0\0\0\0\0\0",pad=None, padmode=PAD_PKCS5)
     enc_url = util.decode64(url.strip())
-    dec_url = des_cipher.decrypt(enc_url, padmode=PAD_PKCS5).decode('utf-8')
+    dec_url = des_cipher.decrypt(enc_url, padmode=PAD_PKCS5).decode('utf8')
     dec_url = dec_url.replace("_96.mp4", "_320.mp4")
     return dec_url
