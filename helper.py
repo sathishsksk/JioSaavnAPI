@@ -58,7 +58,7 @@ def format(string):
 def decrypt_url(url):
     try:
         # Decode the URL from base64
-        enc_url = base64.b64decode(url.strip())
+        enc_url = base64.b64decode(url)
 
         # Create a DES cipher with the correct key and mode
         key = b"38346591"
