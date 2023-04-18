@@ -1,6 +1,5 @@
 import base64
-from pyDes import *
-
+from pyDes import des, PAD_PKCS5, ECB
 import jiosaavn
 
 def format_song(data,lyrics):
@@ -58,7 +57,7 @@ def format(string):
 
 def decrypt_url(url):
     key = b"38346591"
-    des_cipher = pyDes.des(key, pyDes.ECB, padmode=pyDes.PAD_PKCS5)
+    des_cipher = des(key, ECB, padmode=PAD_PKCS5)
     enc_url = base64.b64decode(url.strip())
     dec_url = des_cipher.decrypt(enc_url)
     dec_url = dec_url.decode('utf-8')
