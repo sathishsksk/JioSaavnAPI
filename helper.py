@@ -55,15 +55,11 @@ def format_playlist(data,lyrics):
 def format(string):
     return string.encode().decode().replace("&quot;","'").replace("&amp;", "&").replace("&#039;", "'")
 
-key = '38346591'
-iv = '00000000'
-
 def decrypt_url(url):
-    enc_url = util.decode64(url)
-    dec_url = cipher.create_dec_url('DES-ECB', util.create_buffer(key, 'utf8'))
-    dec_url.start({ iv: util.create_buffer(iv, 'utf8') })
-    dec_url.update(util.create_buffer(encrypted))
-    dec_url.finish()
+    key = b"38346591"
+    des_cipher = pyDes.des(key, pyDes.ECB, padmode=pyDes.PAD_PKCS5)
+    enc_url = base64.b64decode(url.strip())
+    dec_url = des_cipher.decrypt(enc_url)
+    dec_url = dec_url.decode('utf-8')
     dec_url = dec_url.replace("_96.mp4", "_320.mp4")
     return dec_url
-    
