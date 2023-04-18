@@ -1,6 +1,6 @@
 import base64
-from pyDes import des, PAD_PKCS5, ECB
 import jiosaavn
+from pyDes import *
 
 def format_song(data,lyrics):
     try:
@@ -11,7 +11,7 @@ def format_song(data,lyrics):
         else:
             url = url.replace("_96_p.mp4", "_160.mp4")
         data['media_url'] = url
-    except (KeyError, TypeError):
+    except KeyError or TypeError:
         data['media_url'] = decrypt_url(data['encrypted_media_url'])
         if data['320kbps']!="true":
             data['media_url'] = data['media_url'].replace("_320.mp4","_160.mp4")
@@ -53,13 +53,26 @@ def format_playlist(data,lyrics):
     return data
 
 def format(string):
-    return string.replace("&quot;", "'").replace("&amp;", "&").replace("&#039;", "'")
+    return string.encode().decode().replace("&quot;","'").replace("&amp;", "&").replace("&#039;", "'")
 
 def decrypt_url(url):
-    key = b"38346591"
-    des_cipher = des(key, ECB, padmode=PAD_PKCS5)
-    enc_url = base64.urlsafe_b64decode(url + "==")
-    dec_url = des_cipher.decrypt(enc_url, padmode=PAD_PKCS5)
-    dec_url = dec_url.decode('utf-8')
-    dec_url = dec_url.replace("_96.mp4", "_320.mp4")
-    return dec_url
+    try:
+        # Decode the URL from base64
+        enc_url = base64.b64decode(url.strip())
+
+        # Create a DES cipher with the correct key and mode
+        key = b"38346591"
+        mode = ECB
+        iv = b"\0\0\0\0\0\0\0\0"
+        des_cipher = des(key, mode, iv, pad=None, padmode=PAD_PKCS5)
+
+        # Decrypt the URL and replace the file extension with 320.mp4
+        dec_url = des_cipher.decrypt(enc_url)
+        dec_url = dec_url[:-1]  # Remove last byte (padding)
+        dec_url = dec_url.decode('utf-8')
+        dec_url = dec_url.replace("_96.mp4", "_320.mp4")
+
+        return dec_url
+    except Exception as e:
+        print("Error decrypting URL: ", e)
+        return None
