@@ -1,6 +1,7 @@
 import base64
-import jiosaavn
 from pyDes import *
+
+import jiosaavn
 
 def format_song(data,lyrics):
     try:
@@ -11,7 +12,7 @@ def format_song(data,lyrics):
         else:
             url = url.replace("_96_p.mp4", "_160.mp4")
         data['media_url'] = url
-    except KeyError or TypeError:
+    except (KeyError, TypeError):
         data['media_url'] = decrypt_url(data['encrypted_media_url'])
         if data['320kbps']!="true":
             data['media_url'] = data['media_url'].replace("_320.mp4","_160.mp4")
@@ -53,7 +54,7 @@ def format_playlist(data,lyrics):
     return data
 
 def format(string):
-    return string.encode().decode().replace("&quot;","'").replace("&amp;", "&").replace("&#039;", "'")
+    return string.replace("&quot;", "'").replace("&amp;", "&").replace("&#039;", "'")
 
 def decrypt_url(url):
     key = b"38346591"
