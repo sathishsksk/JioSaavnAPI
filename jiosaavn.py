@@ -86,25 +86,37 @@ def _decrypt_url(encrypted: str) -> str:
 
 
 def _get_media_url(song: dict) -> str:
-    """Extract and decrypt the best available download URL from a song dict."""
-    # Try direct encrypted URLs in priority order
-    for key in ("encrypted_media_url", "more_info.encrypted_media_url"):
-        parts = key.split(".")
-        val   = song
-        for p in parts:
-            val = val.get(p, {}) if isinstance(val, dict) else {}
+    """
+    Extract best download URL from a song dict.
+    Priority:
+      1. media_url (direct CDN URL — already present in most responses)
+      2. encrypted_media_url (decrypt with DES key)
+      3. media_preview_url (upgrade from preview to full)
+    """
+    # 1. Direct media_url — most responses have this already
+    direct = song.get("media_url") or ""
+    if direct and isinstance(direct, str) and direct.startswith("http"):
+        return direct.replace("http://", "https://")
+
+    # 2. Decrypt encrypted_media_url
+    for key in ("encrypted_media_url",):
+        val = song.get(key) or ""
+        if not val:
+            # Try inside more_info
+            val = (song.get("more_info") or {}).get(key) or ""
         if isinstance(val, str) and val:
             url = _decrypt_url(val)
-            if url:
+            if url and url.startswith("http"):
                 return url
 
-    # Try unencrypted URL fields
-    for key in ("media_preview_url", "vlink", "url"):
-        val = song.get(key, "")
-        if isinstance(val, str) and val.startswith("http"):
-            return val.replace("http://", "https://").replace(
-                "preview.saavncdn.com", "aac.saavncdn.com"
-            ).replace("_96_p.mp4", "_320.mp4")
+    # 3. Preview URL — upgrade to full quality
+    preview = song.get("media_preview_url") or ""
+    if preview and isinstance(preview, str) and preview.startswith("http"):
+        return (preview
+                .replace("http://", "https://")
+                .replace("preview.saavncdn.com", "aac.saavncdn.com")
+                .replace("_96_p.mp4", "_320.mp4")
+                .replace("_96.mp4",   "_320.mp4"))
 
     return ""
 
@@ -141,48 +153,79 @@ def _call(params: dict) -> dict | list | None:
 
 # ── Song parser ───────────────────────────────────────────────────────────────
 def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
-    """Parse a raw song dict into our clean response format."""
+    """
+    Return the song dict with ALL original fields preserved,
+    plus computed/upgraded fields added on top.
+    """
     if not isinstance(raw, dict):
         return None
 
-    more    = raw.get("more_info") or {}
-    title   = raw.get("title") or raw.get("song") or ""
+    more = raw.get("more_info") or {}
+
+    # Flatten more_info into top level (like the old API did)
+    merged = {**more, **raw}
+    merged.pop("more_info", None)
+
+    title = merged.get("title") or merged.get("song") or ""
     if not title:
         return None
 
-    singers     = more.get("singers") or more.get("primary_artists") or raw.get("singers") or raw.get("primary_artists") or ""
-    album       = more.get("album") or raw.get("album") or ""
-    album_url   = more.get("album_url") or raw.get("album_url") or ""
-    image       = more.get("image") or raw.get("image") or ""
-    duration    = more.get("duration") or raw.get("duration") or "0"
-    year        = more.get("release_date", "")[:4] if more.get("release_date") else (raw.get("year") or "")
-    language    = more.get("language") or raw.get("language") or ""
-    perma_url   = raw.get("perma_url") or more.get("perma_url") or ""
-    song_id     = raw.get("id") or raw.get("songid") or ""
-    lyrics_id   = more.get("lyrics_id") or ""
+    # ── Computed / upgraded fields ────────────────────────────────────────────
 
-    media_url = _get_media_url({**raw, "more_info": more})
+    # Best download URL — _get_media_url now checks media_url first
+    media_url = _get_media_url(merged)
+    if not media_url:
+        media_url = _get_media_url(raw)   # try original before merging
 
-    lyrics = ""
-    if fetch_lyrics and lyrics_id:
-        lyrics = get_lyrics(lyrics_id)
+    # Upgrade image to 500x500
+    image = _best_image(merged.get("image") or merged.get("image_url") or "")
 
-    return {
-        "title":      _clean(title),
-        "song":       _clean(title),
-        "singers":    _clean(singers),
-        "album":      _clean(album),
-        "album_url":  album_url,
-        "image_url":  _best_image(image),
-        "image":      _best_image(image),
-        "url":        media_url,
-        "duration":   str(duration),
-        "year":       year,
-        "language":   language,
-        "perma_url":  perma_url,
-        "songid":     song_id,
-        "lyrics":     lyrics,
-    }
+    # Singers / primary_artists — normalise field names
+    singers = (
+        merged.get("singers") or
+        merged.get("primary_artists") or
+        merged.get("music") or ""
+    )
+
+    # Lyrics
+    lyrics = merged.get("lyrics") or ""
+    if fetch_lyrics and not lyrics:
+        lyrics_id = merged.get("lyrics_id") or ""
+        if lyrics_id:
+            lyrics = get_lyrics(lyrics_id)
+
+    # Year from release_date or year field
+    year = merged.get("year") or ""
+    release_date = merged.get("release_date") or ""
+    if not year and release_date:
+        year = release_date[:4]
+
+    # Build result: start with ALL original fields, then override key ones
+    result = dict(merged)
+    result.update({
+        # Normalised fields (keep old names for bot compatibility)
+        "title":              _clean(title),
+        "song":               _clean(title),
+        "singers":            _clean(singers),
+        "primary_artists":    _clean(singers),
+        "album":              _clean(merged.get("album") or ""),
+        "album_url":          merged.get("album_url") or "",
+        "image":              image,
+        "image_url":          image,
+        "url":                media_url,           # decrypted / direct download URL
+        "media_url":          media_url,
+        "duration":           str(merged.get("duration") or "0"),
+        "year":               year,
+        "release_date":       release_date,
+        "language":           merged.get("language") or "",
+        "perma_url":          merged.get("perma_url") or "",
+        "has_lyrics":         merged.get("has_lyrics") or "false",
+        "lyrics":             lyrics,
+        "320kbps":            merged.get("320kbps") or "true",
+        "id":                 merged.get("id") or merged.get("songid") or "",
+    })
+
+    return result
 
 
 def _clean(s: str) -> str:
@@ -197,31 +240,57 @@ def _clean(s: str) -> str:
 def search(query: str, n: int = 10, fetch_lyrics: bool = False) -> list[dict]:
     """
     Search JioSaavn by song name or any text.
-    Returns a list of parsed song dicts.
+    Tries multiple search endpoints to ensure results.
     """
+    songs_raw = []
+
+    # Try search.getResults first
     data = _call({
         "__call": "search.getResults",
         "p":      "1",
         "q":      query,
         "n":      str(n),
     })
-    if not data:
-        return []
+    if data:
+        if isinstance(data, list):
+            songs_raw = data
+        elif isinstance(data, dict):
+            # Various nested formats JioSaavn uses
+            for key in ("results", "songs", "data", "response"):
+                val = data.get(key)
+                if isinstance(val, list) and val:
+                    songs_raw = val
+                    break
+                # Sometimes nested one more level
+                if isinstance(val, dict):
+                    for k2 in ("results", "data", "songs"):
+                        val2 = val.get(k2)
+                        if isinstance(val2, list) and val2:
+                            songs_raw = val2
+                            break
+            # Single song response
+            if not songs_raw and (data.get("title") or data.get("song")):
+                songs_raw = [data]
 
-    # Response is either a list directly or {"results": [...]}
-    songs_raw = []
-    if isinstance(data, list):
-        songs_raw = data
-    elif isinstance(data, dict):
-        for key in ("results", "songs", "data"):
-            if isinstance(data.get(key), list):
-                songs_raw = data[key]
-                break
-        if not songs_raw and data.get("title"):
-            songs_raw = [data]
+    # Fallback: try search.getSearchResults (older endpoint)
+    if not songs_raw:
+        data2 = _call({
+            "__call": "search.getSearchResults",
+            "q":      query,
+            "p":      "1",
+            "n":      str(n),
+        })
+        if isinstance(data2, dict):
+            songs_node = data2.get("songs") or {}
+            if isinstance(songs_node, dict):
+                songs_raw = songs_node.get("data") or songs_node.get("results") or []
+            elif isinstance(songs_node, list):
+                songs_raw = songs_node
 
     results = []
     for raw in songs_raw:
+        if not isinstance(raw, dict):
+            continue
         parsed = _parse_song(raw, fetch_lyrics)
         if parsed:
             results.append(parsed)
