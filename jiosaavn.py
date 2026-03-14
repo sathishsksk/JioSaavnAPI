@@ -172,10 +172,40 @@ def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
 
     # ── Computed / upgraded fields ────────────────────────────────────────────
 
-    # Best download URL — _get_media_url now checks media_url first
-    media_url = _get_media_url(merged)
+    # media_preview_url — reconstruct from encrypted path or preserve original
+    preview_url = merged.get("media_preview_url") or ""
+    if not preview_url:
+        # Try to build from encrypted_media_path (base64 path → preview CDN)
+        enc_path = merged.get("encrypted_media_path") or ""
+        if enc_path:
+            dec = _decrypt_url(enc_path)
+            if dec and "saavncdn.com" in dec:
+                preview_url = dec.replace("_320.mp4", "_96_p.mp4").replace("aac.", "preview.")
+    if preview_url:
+        preview_url = preview_url.replace("http://", "https://")
+
+    # Best download URL:
+    #   new search results have media_url="" but have encrypted_media_url
+    #   always try decrypt first, then fall back to direct
+    media_url = ""
+
+    # Priority 1: decrypt encrypted_media_url (works even when media_url is "")
+    enc = merged.get("encrypted_media_url") or ""
+    if enc and isinstance(enc, str):
+        media_url = _decrypt_url(enc)
+
+    # Priority 2: direct media_url if decrypt failed
     if not media_url:
-        media_url = _get_media_url(raw)   # try original before merging
+        direct = merged.get("media_url") or ""
+        if direct and isinstance(direct, str) and direct.startswith("http"):
+            media_url = direct.replace("_96.mp4", "_320.mp4").replace("http://", "https://")
+
+    # Priority 3: upgrade preview URL to 320
+    if not media_url and preview_url:
+        media_url = (preview_url
+                     .replace("preview.saavncdn.com", "aac.saavncdn.com")
+                     .replace("_96_p.mp4", "_320.mp4")
+                     .replace("http://", "https://"))
 
     # Upgrade image to 500x500
     image = _best_image(merged.get("image") or merged.get("image_url") or "")
@@ -212,8 +242,9 @@ def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
         "album_url":          merged.get("album_url") or "",
         "image":              image,
         "image_url":          image,
-        "url":                media_url,           # decrypted / direct download URL
+        "url":                media_url,
         "media_url":          media_url,
+        "media_preview_url":  preview_url,
         "duration":           str(merged.get("duration") or "0"),
         "year":               year,
         "release_date":       release_date,
