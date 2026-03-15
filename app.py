@@ -86,12 +86,20 @@ def playlist():
 @app.route('/album/')
 def album():
     query = request.args.get('query')
+    if not query:
+        return jsonify({"error": "query parameter is required"}), 400
     lyrics_flag = request.args.get('lyrics')
-    if not query.startswith('http'):
-        res = jiosaavn.search_album(query, lyrics_flag)
-    else:
-        res = jiosaavn.album(query, lyrics_flag)
-    return jsonify(res)
+    try:
+        if query.startswith('http'):
+            # URL passed → get album ID directly
+            album_id = jiosaavn.get_album_id(query)
+            res = jiosaavn.get_album(album_id, lyrics_flag)
+        else:
+            # Plain text → search first
+            res = jiosaavn.search_album(query, lyrics_flag)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/lyrics/')
