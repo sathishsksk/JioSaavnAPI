@@ -259,6 +259,59 @@ def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
     return result
 
 
+def _enrich_media_url(song: dict) -> dict:
+    """
+    Search results always have media_url="" — JioSaavn intentionally blocks it.
+    The real URL only comes from webapi.get with the song token.
+    Extract token from perma_url and call webapi.get to get the real media_url.
+    """
+    if song.get("media_url") and song["media_url"].startswith("http"):
+        return song   # already have it
+
+    perma_url = song.get("perma_url") or ""
+    if not perma_url:
+        return song
+
+    token = _extract_token(perma_url)
+    if not token:
+        return song
+
+    try:
+        data = _call({"__call": "webapi.get", "token": token, "type": "song", "n": "1"})
+        if not data:
+            return song
+
+        raw_list = data if isinstance(data, list) else [data]
+        for raw in raw_list:
+            if not isinstance(raw, dict):
+                continue
+            more   = raw.get("more_info") or {}
+            merged = {**more, **raw}
+
+            # Get media_url and media_preview_url from the enriched response
+            media_url   = merged.get("media_url") or ""
+            preview_url = merged.get("media_preview_url") or ""
+
+            # Decrypt encrypted_media_url if needed
+            if not (media_url and media_url.startswith("http")):
+                enc = merged.get("encrypted_media_url") or ""
+                if enc:
+                    media_url = _decrypt_url(enc)
+
+            if media_url and media_url.startswith("http"):
+                media_url = media_url.replace("http://", "https://")
+                song["media_url"]         = media_url
+                song["url"]               = media_url
+            if preview_url and preview_url.startswith("http"):
+                song["media_preview_url"] = preview_url.replace("http://", "https://")
+            break
+
+    except Exception:
+        pass
+
+    return song
+
+
 def _clean(s: str) -> str:
     """Strip HTML tags."""
     return re.sub(r"<[^>]+>", "", str(s)).strip()
@@ -324,6 +377,8 @@ def search(query: str, n: int = 10, fetch_lyrics: bool = False) -> list[dict]:
             continue
         parsed = _parse_song(raw, fetch_lyrics)
         if parsed:
+            # Enrich: fetch real media_url via webapi.get (search returns empty media_url)
+            parsed = _enrich_media_url(parsed)
             results.append(parsed)
     return results
 
