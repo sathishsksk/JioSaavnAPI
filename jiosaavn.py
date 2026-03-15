@@ -72,11 +72,10 @@ def search_album(query, lyrics_flag=None):
     search_url = "https://www.jiosaavn.com/api.php?__call=search.getAlbumResults&q={}&p=1&n=1&_format=json&_marker=0&ctx=web6dot0".format(query)
     res = requests.get(search_url)
     data = res.json()
-    
     try:
         album_url = data['results'][0]['perma_url']
-        album_id = get_album_id(album_url)       # ← step 1: get album ID from URL
-        return get_album(album_id, lyrics_flag)  # ← step 2: fetch album data
+        album_id = get_album_id(album_url)
+        return get_album(album_id, lyrics_flag)
     except (KeyError, IndexError):
         return {"error": "No album found for query: {}".format(query)}
 
