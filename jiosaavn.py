@@ -59,6 +59,14 @@ def get_album(album_id, lyrics):
     except Exception as e:
         print(e)
         return None
+    results = search(query, n=20, get_lyrics=get_lyrics)
+    if not results:
+        return []
+    top = results[0].get("album", "").lower()
+    if top:
+        matched = [s for s in results if s.get("album", "").lower() == top]
+        return matched or results
+    return results
 
 
 def get_album_id(input_url):
