@@ -87,13 +87,10 @@ def playlist():
 def album():
     query = request.args.get('query')
     lyrics_flag = request.args.get('lyrics')
-    
-    # If plain text (not a URL), search for the album first
     if not query.startswith('http'):
         res = jiosaavn.search_album(query, lyrics_flag)
     else:
         res = jiosaavn.album(query, lyrics_flag)
-    
     return jsonify(res)
 
 
