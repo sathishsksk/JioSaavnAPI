@@ -1,16 +1,16 @@
 """
-app.py  —  JioSaavn API Flask application
+app.py — JioSaavn API (Flask)
 
-Endpoints:
-  GET /result/?query=<url-or-text>&lyrics=true   ← universal (auto-detects type)
+Endpoints identical to cyberboysumanjay/JioSaavnAPI + text search for album/artist.
+
+Routes:
+  GET /result/?query=<url-or-text>&lyrics=true   ← universal
   GET /song/?query=<url-or-text>&lyrics=true
   GET /album/?query=<url-or-text>&lyrics=true
   GET /playlist/?query=<url-or-text>&lyrics=true
-  GET /lyrics/?query=<song-url-or-lyrics-id>
+  GET /lyrics/?query=<url-or-lyrics-id>
 
-All endpoints accept:
-  - Full JioSaavn URL  (jiosaavn.com/song/..., /album/..., /featured/..., etc.)
-  - Plain text search  (song name, album name, artist name)
+All endpoints accept both direct JioSaavn URLs and plain text search.
 """
 
 from flask import Flask, jsonify, request, render_template_string
@@ -19,104 +19,98 @@ from jiosaavn import get_result, get_song, get_album, get_playlist, get_lyrics
 app = Flask(__name__)
 
 
-def _q() -> str:
+# ── helpers ───────────────────────────────────────────────────────────────────
+def q():
     return (request.args.get("query") or "").strip()
 
 
-def _lyrics() -> bool:
+def use_lyrics():
     return request.args.get("lyrics", "").lower() in ("true", "1", "yes")
 
 
-def _respond(data):
+def respond(data):
     if not data:
         return jsonify({"error": "No results found"}), 404
-    # Return list if multiple, single dict if one
     return jsonify(data[0] if len(data) == 1 else data)
 
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── routes ────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    return render_template_string("""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JioSaavn API</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
-    h1   { color: #1db954; }
-    code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
-    pre  { background: #f4f4f4; padding: 16px; border-radius: 8px; overflow-x: auto; }
-    a    { color: #1db954; }
-    .endpoint { margin: 20px 0; padding: 16px; border-left: 3px solid #1db954; background: #f9f9f9; }
-  </style>
-</head>
-<body>
-  <h1>🎵 JioSaavn API</h1>
-  <p>Unofficial JioSaavn API — supports both direct URLs and plain text search.</p>
-  <hr>
+    return render_template_string("""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JioSaavn API</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:780px;margin:50px auto;padding:0 20px;color:#222;line-height:1.6}
+  h1{color:#1db954;margin-bottom:4px}
+  h2{margin-top:32px;margin-bottom:8px;font-size:1rem;color:#555}
+  code{background:#f0f0f0;padding:2px 7px;border-radius:4px;font-size:.9em}
+  .e{background:#f9f9f9;border-left:3px solid #1db954;padding:12px 16px;margin:8px 0;border-radius:0 6px 6px 0}
+  a{color:#1db954}
+</style>
+</head><body>
+<h1>🎵 JioSaavn API</h1>
+<p>Unofficial API — supports JioSaavn URLs and plain text search on all endpoints.</p>
+<hr>
 
-  <div class="endpoint">
-    <b>Universal Search / URL</b><br>
-    <code>/result/?query=bigil</code><br>
-    <code>/result/?query=https://www.jiosaavn.com/album/bigil/...</code><br>
-    <code>/result/?query=bigil&lyrics=true</code>
-  </div>
+<h2>Universal (auto-detects song/album/playlist or searches by name)</h2>
+<div class="e">
+  <code>/result/?query=bigil</code><br>
+  <code>/result/?query=https://www.jiosaavn.com/album/bigil/-ZHywILiMS4_</code><br>
+  <code>/result/?query=kannaana+kanney&amp;lyrics=true</code>
+</div>
 
-  <div class="endpoint">
-    <b>Song</b><br>
-    <code>/song/?query=kannaana+kanney</code><br>
-    <code>/song/?query=https://www.jiosaavn.com/song/...</code>
-  </div>
+<h2>Song</h2>
+<div class="e">
+  <code>/song/?query=bigil+bigil+bigiluma</code><br>
+  <code>/song/?query=https://www.jiosaavn.com/song/...</code>
+</div>
 
-  <div class="endpoint">
-    <b>Album</b><br>
-    <code>/album/?query=bigil</code><br>
-    <code>/album/?query=https://www.jiosaavn.com/album/bigil/...</code>
-  </div>
+<h2>Album</h2>
+<div class="e">
+  <code>/album/?query=bigil</code><br>
+  <code>/album/?query=https://www.jiosaavn.com/album/bigil/-ZHywILiMS4_</code>
+</div>
 
-  <div class="endpoint">
-    <b>Playlist</b><br>
-    <code>/playlist/?query=tamil hits</code><br>
-    <code>/playlist/?query=https://www.jiosaavn.com/featured/...</code>
-  </div>
+<h2>Playlist</h2>
+<div class="e">
+  <code>/playlist/?query=tamil hits 2024</code><br>
+  <code>/playlist/?query=https://www.jiosaavn.com/featured/...</code>
+</div>
 
-  <div class="endpoint">
-    <b>Lyrics</b><br>
-    <code>/lyrics/?query=https://www.jiosaavn.com/song/...</code>
-  </div>
+<h2>Lyrics</h2>
+<div class="e">
+  <code>/lyrics/?query=https://www.jiosaavn.com/song/...</code>
+</div>
 
-  <hr>
-  <p>Add <code>&amp;lyrics=true</code> to any endpoint to include lyrics. Takes slightly longer.</p>
-</body>
-</html>
-""")
+<hr>
+<p>Add <code>&amp;lyrics=true</code> to any endpoint to include lyrics (slower).</p>
+</body></html>""")
 
 
 @app.route("/result/")
 def result():
-    q = _q()
-    if not q:
-        return jsonify({"error": "query parameter is required"}), 400
-    return _respond(get_result(q, _lyrics()))
+    v = q()
+    if not v:
+        return jsonify({"error": "query parameter required"}), 400
+    return respond(get_result(v, use_lyrics()))
 
 
 @app.route("/song/")
 def song():
-    q = _q()
-    if not q:
-        return jsonify({"error": "query parameter is required"}), 400
-    return _respond(get_song(q, _lyrics()))
+    v = q()
+    if not v:
+        return jsonify({"error": "query parameter required"}), 400
+    return respond(get_song(v, use_lyrics()))
 
 
 @app.route("/album/")
 def album():
-    q = _q()
-    if not q:
-        return jsonify({"error": "query parameter is required"}), 400
-    data = get_album(q, _lyrics())
+    v = q()
+    if not v:
+        return jsonify({"error": "query parameter required"}), 400
+    data = get_album(v, use_lyrics())
     if not data:
         return jsonify({"error": "Album not found"}), 404
     return jsonify(data)
@@ -124,10 +118,10 @@ def album():
 
 @app.route("/playlist/")
 def playlist():
-    q = _q()
-    if not q:
-        return jsonify({"error": "query parameter is required"}), 400
-    data = get_playlist(q, _lyrics())
+    v = q()
+    if not v:
+        return jsonify({"error": "query parameter required"}), 400
+    data = get_playlist(v, use_lyrics())
     if not data:
         return jsonify({"error": "Playlist not found"}), 404
     return jsonify(data)
@@ -135,22 +129,12 @@ def playlist():
 
 @app.route("/lyrics/")
 def lyrics():
-    q = _q()
-    if not q:
-        return jsonify({"error": "query parameter is required"}), 400
-    # Accept song URL → get lyrics_id from song first
-    from jiosaavn import get_song, is_jiosaavn_url
-    if is_jiosaavn_url(q):
-        songs = get_song(q, fetch_lyrics=True)
-        if songs and songs[0].get("lyrics"):
-            return jsonify({"lyrics": songs[0]["lyrics"]})
-        return jsonify({"lyrics": ""}), 200
-    # Plain lyrics_id
-    from jiosaavn import get_lyrics as _get
-    return jsonify({"lyrics": _get(q)})
+    v = q()
+    if not v:
+        return jsonify({"error": "query parameter required"}), 400
+    return jsonify({"lyrics": get_lyrics(v)})
 
 
-# ── Error handlers ─────────────────────────────────────────────────────────────
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Endpoint not found"}), 404
@@ -158,7 +142,7 @@ def not_found(e):
 
 @app.errorhandler(500)
 def server_error(e):
-    return jsonify({"error": "Internal server error", "detail": str(e)}), 500
+    return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
