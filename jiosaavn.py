@@ -155,33 +155,6 @@ def _call(params: dict) -> dict | list | None:
         return None
 
 
-def _generate_auth_token(encrypted_media_url: str, bitrate: str = "320") -> str:
-    """
-    Use song.generateAuthToken (POST) to get a playable auth URL.
-    This is yt-dlp's method — works for all songs regardless of Pro status.
-    Returns the auth_url string, or "" on failure.
-    """
-    if not encrypted_media_url:
-        return ""
-    try:
-        r = requests.post(
-            API,
-            data={
-                "__call":   "song.generateAuthToken",
-                "_format":  "json",
-                "bitrate":  bitrate,
-                "url":      encrypted_media_url,
-            },
-            headers=HEADERS,
-            timeout=TIMEOUT,
-        )
-        r.raise_for_status()
-        data = r.json()
-        return data.get("auth_url") or ""
-    except Exception:
-        return ""
-
-
 # ── Song parser ───────────────────────────────────────────────────────────────
 def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
     """
@@ -237,12 +210,6 @@ def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
                      .replace("preview.saavncdn.com", "aac.saavncdn.com")
                      .replace("_96_p.mp4", "_320.mp4")
                      .replace("http://", "https://"))
-
-    # Priority 4: song.generateAuthToken POST — always works, yt-dlp's method
-    if not media_url:
-        enc = merged.get("encrypted_media_url") or ""
-        if enc:
-            media_url = _generate_auth_token(enc, bitrate="320")
 
     # Upgrade image to 500x500
     image = _best_image(merged.get("image") or merged.get("image_url") or "")
