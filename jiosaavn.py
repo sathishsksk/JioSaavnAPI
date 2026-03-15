@@ -132,14 +132,18 @@ def _best_image(image: str) -> str:
     return image
 
 
-# ── Raw API caller ────────────────────────────────────────────────────────────
+# ── Raw API callers ───────────────────────────────────────────────────────────
 def _call(params: dict) -> dict | list | None:
-    """Make a raw call to JioSaavn's api.php."""
+    """
+    Make a GET call to JioSaavn's api.php.
+    ctx=wap6dot0 (mobile web) returns real media_url without Pro restriction.
+    ctx=web6dot0 (desktop web) returns media_url="" with rights.code=1 for most songs.
+    """
     base_params = {
         "_format":     "json",
         "_marker":     "0",
         "api_version": "4",
-        "ctx":         "web6dot0",
+        "ctx":         "wap6dot0",   # ← mobile context, returns real media URLs
         "cc":          "in",
     }
     base_params.update(params)
@@ -147,8 +151,35 @@ def _call(params: dict) -> dict | list | None:
         r = requests.get(API, params=base_params, headers=HEADERS, timeout=TIMEOUT)
         r.raise_for_status()
         return r.json()
-    except Exception as e:
+    except Exception:
         return None
+
+
+def _generate_auth_token(encrypted_media_url: str, bitrate: str = "320") -> str:
+    """
+    Use song.generateAuthToken (POST) to get a playable auth URL.
+    This is yt-dlp's method — works for all songs regardless of Pro status.
+    Returns the auth_url string, or "" on failure.
+    """
+    if not encrypted_media_url:
+        return ""
+    try:
+        r = requests.post(
+            API,
+            data={
+                "__call":   "song.generateAuthToken",
+                "_format":  "json",
+                "bitrate":  bitrate,
+                "url":      encrypted_media_url,
+            },
+            headers=HEADERS,
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data.get("auth_url") or ""
+    except Exception:
+        return ""
 
 
 # ── Song parser ───────────────────────────────────────────────────────────────
@@ -207,6 +238,12 @@ def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
                      .replace("_96_p.mp4", "_320.mp4")
                      .replace("http://", "https://"))
 
+    # Priority 4: song.generateAuthToken POST — always works, yt-dlp's method
+    if not media_url:
+        enc = merged.get("encrypted_media_url") or ""
+        if enc:
+            media_url = _generate_auth_token(enc, bitrate="320")
+
     # Upgrade image to 500x500
     image = _best_image(merged.get("image") or merged.get("image_url") or "")
 
@@ -257,59 +294,6 @@ def _parse_song(raw: dict, fetch_lyrics: bool = False) -> dict | None:
     })
 
     return result
-
-
-def _enrich_media_url(song: dict) -> dict:
-    """
-    Search results always have media_url="" — JioSaavn intentionally blocks it.
-    The real URL only comes from webapi.get with the song token.
-    Extract token from perma_url and call webapi.get to get the real media_url.
-    """
-    if song.get("media_url") and song["media_url"].startswith("http"):
-        return song   # already have it
-
-    perma_url = song.get("perma_url") or ""
-    if not perma_url:
-        return song
-
-    token = _extract_token(perma_url)
-    if not token:
-        return song
-
-    try:
-        data = _call({"__call": "webapi.get", "token": token, "type": "song", "n": "1"})
-        if not data:
-            return song
-
-        raw_list = data if isinstance(data, list) else [data]
-        for raw in raw_list:
-            if not isinstance(raw, dict):
-                continue
-            more   = raw.get("more_info") or {}
-            merged = {**more, **raw}
-
-            # Get media_url and media_preview_url from the enriched response
-            media_url   = merged.get("media_url") or ""
-            preview_url = merged.get("media_preview_url") or ""
-
-            # Decrypt encrypted_media_url if needed
-            if not (media_url and media_url.startswith("http")):
-                enc = merged.get("encrypted_media_url") or ""
-                if enc:
-                    media_url = _decrypt_url(enc)
-
-            if media_url and media_url.startswith("http"):
-                media_url = media_url.replace("http://", "https://")
-                song["media_url"]         = media_url
-                song["url"]               = media_url
-            if preview_url and preview_url.startswith("http"):
-                song["media_preview_url"] = preview_url.replace("http://", "https://")
-            break
-
-    except Exception:
-        pass
-
-    return song
 
 
 def _clean(s: str) -> str:
@@ -377,8 +361,6 @@ def search(query: str, n: int = 10, fetch_lyrics: bool = False) -> list[dict]:
             continue
         parsed = _parse_song(raw, fetch_lyrics)
         if parsed:
-            # Enrich: fetch real media_url via webapi.get (search returns empty media_url)
-            parsed = _enrich_media_url(parsed)
             results.append(parsed)
     return results
 
