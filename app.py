@@ -9,6 +9,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET", 'thankyoutonystark#weloveyou3000')
 CORS(app)
 
+def _q():    return (request.args.get("query") or "").strip()
+def _lyr():  return request.args.get("lyrics", "").lower() in ("true", "1")
+
 
 @app.route('/')
 def home():
@@ -97,6 +100,11 @@ def album():
             "error": 'Query is required to search albums!'
         }
         return jsonify(error)
+    q = _q()
+    if not q: return jsonify({"error": "query required"}), 400
+    data = get_album(q, _lyr())
+    if not data: return jsonify({"error": "Album not found"}), 404
+    return jsonify(data)
 
 
 @app.route('/lyrics/')
