@@ -85,26 +85,16 @@ def playlist():
 
 @app.route('/album/')
 def album():
-    lyrics = False
     query = request.args.get('query')
-    lyrics_ = request.args.get('lyrics')
-    if lyrics_ and lyrics_.lower() != 'false':
-        lyrics = True
-    if query:
-        id = jiosaavn.get_album_id(query)
-        songs = jiosaavn.get_album(id, lyrics)
-        return jsonify(songs)
+    lyrics_flag = request.args.get('lyrics')
+    
+    # If plain text (not a URL), search for the album first
+    if not query.startswith('http'):
+        res = jiosaavn.search_album(query, lyrics_flag)
     else:
-        error = {
-            "status": False,
-            "error": 'Query is required to search albums!'
-        }
-        return jsonify(error)
-    q = _q()
-    if not q: return jsonify({"error": "query required"}), 400
-    data = get_album(q, _lyr())
-    if not data: return jsonify({"error": "Album not found"}), 404
-    return jsonify(data)
+        res = jiosaavn.album(query, lyrics_flag)
+    
+    return jsonify(res)
 
 
 @app.route('/lyrics/')
