@@ -59,32 +59,26 @@ def get_album(album_id, lyrics):
     except Exception as e:
         print(e)
         return None
-    results = search(query, n=20, get_lyrics=get_lyrics)
-    if not results:
-        return []
-    top = results[0].get("album", "").lower()
-    if top:
-        matched = [s for s in results if s.get("album", "").lower() == top]
-        return matched or results
-    return results
-
-def search_album(query, lyrics_flag=None):
-    search_url = "https://www.jiosaavn.com/api.php?__call=search.getAlbumResults&q={}&p=1&n=1&_format=json&_marker=0&ctx=web6dot0".format(query)
-    res = requests.get(search_url)   # ← removed headers=headers
-    data = res.json()
     
-    try:
-        album_url = data['results'][0]['perma_url']
-        return album(album_url, lyrics_flag)
-    except (KeyError, IndexError):
-        return {"error": "No album found for query: {}".format(query)}
-        
+     
 def get_album_id(input_url):
     res = requests.get(input_url)
     try:
         return res.text.split('"album_id":"')[1].split('"')[0]
     except IndexError:
         return res.text.split('"page_id","')[1].split('","')[0]
+
+def search_album(query, lyrics_flag=None):
+    search_url = "https://www.jiosaavn.com/api.php?__call=search.getAlbumResults&q={}&p=1&n=1&_format=json&_marker=0&ctx=web6dot0".format(query)
+    res = requests.get(search_url)
+    data = res.json()
+    
+    try:
+        album_url = data['results'][0]['perma_url']
+        album_id = get_album_id(album_url)       # ← step 1: get album ID from URL
+        return get_album(album_id, lyrics_flag)  # ← step 2: fetch album data
+    except (KeyError, IndexError):
+        return {"error": "No album found for query: {}".format(query)}
 
 
 def get_playlist(listId, lyrics):
